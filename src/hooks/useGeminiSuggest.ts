@@ -14,6 +14,11 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
   const workletRef = useRef<AudioWorkletNode | null>(null);
   const onFinalTranscriptRef = useRef(onFinalTranscript);
   onFinalTranscriptRef.current = onFinalTranscript;
+  const isWritingAnswerRef = useRef(false);
+  const apiKeyRef = useRef<string>("");
+  const systemTextRef = useRef<string>("");
+  const resumptionHandleRef = useRef<string | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     void window.desktopApi?.geminiHasKey?.().then((has) => {
@@ -22,12 +27,20 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
     });
   }, []);
 
-  async function startAudioSession(stream: MediaStream, apiKey: string) {
+  async function startAudioSession(
+    stream: MediaStream,
+    apiKey: string,
+    customPrompt?: string,
+    resumeText?: string,
+  ) {
     if (!apiKey) {
       console.error("[gemini] startAudioSession: no API key");
       setError("Gemini API key not set.");
       return;
     }
+
+    apiKeyRef.current = apiKey;
+    streamRef.current = stream;
 
     const audioTracks = stream.getAudioTracks();
     console.log(
@@ -46,29 +59,36 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
     console.log("[gemini] WebSocket created, waiting for open...");
 
     ws.onopen = () => {
-      console.log("[gemini] WebSocket OPEN");
+      const baseInstruction =
+        "You are an interview assistant. Listen to the meeting conversation. When someone asks a question directed at the user, provide a concise, spoken-style answer. If no question is asked, stay silent.";
+
+      const parts = [baseInstruction];
+
+      if (resumeText?.trim()) {
+        parts.push(
+          `Candidate resume (use this to answer questions about background, projects, and skills):\n${resumeText.trim()}`,
+        );
+      }
+
+      if (customPrompt?.trim()) {
+        parts.push(`User preferences:\n${customPrompt.trim()}`);
+      }
+
+      const systemText = parts.join("\n\n");
+      systemTextRef.current = systemText;
+
       const setup = {
         setup: {
-          // Switch back to the conversational model that supports Q&A
           model: "models/gemini-3.1-flash-live-preview",
-          generationConfig: {
-            // ✅ Key: must request AUDIO, cannot be TEXT
-            responseModalities: ["AUDIO"],
-          },
-          // Keep input transcription (display what the other party said)
+          generationConfig: { responseModalities: ["AUDIO"] },
           inputAudioTranscription: {},
-          // ✅ Key: enable output transcription (read the model's answer from here)
           outputAudioTranscription: {},
-          systemInstruction: {
-            parts: [
-              {
-                text: "You are an interview assistant. Listen to the meeting conversation. When someone asks a question directed at the user, provide a concise, spoken-style answer. If no question is asked, stay silent.",
-              },
-            ],
+          contextWindowCompression: {
+            slidingWindow: {},
           },
+          systemInstruction: { parts: [{ text: systemText }] },
         },
       };
-      console.log("[gemini] sending setup:", JSON.stringify(setup));
       ws.send(JSON.stringify(setup));
       startPcmCapture(stream, ws);
     };
@@ -101,6 +121,20 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
         setStatus("idle");
         return;
       }
+      if (msg.sessionResumptionUpdate?.newHandle) {
+        resumptionHandleRef.current = msg.sessionResumptionUpdate.newHandle;
+        console.log("[gemini] resumption handle updated");
+      }
+
+      if (msg.goAway) {
+        console.log(
+          "[gemini] goAway received, time left:",
+          msg.goAway.timeLeft,
+        );
+        setStatus("pending");
+        void reconnect(apiKeyRef.current, systemTextRef.current);
+        return;
+      }
 
       const serverContent = msg.serverContent;
       if (!serverContent) return;
@@ -119,8 +153,16 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
       // 2. ✅ Model answer (from output transcription, not modelTurn.parts.text)
       if (serverContent.outputTranscription?.text) {
         const answerText = serverContent.outputTranscription.text;
-        console.log("[gemini] output transcript (answer):", answerText);
-        setAnswer((prev) => prev + answerText);
+        if (!isWritingAnswerRef.current) {
+          isWritingAnswerRef.current = true;
+          setAnswer(answerText);
+        } else {
+          setAnswer((prev) => prev + answerText);
+        }
+      }
+
+      if (serverContent.turnComplete || msg.turnComplete) {
+        isWritingAnswerRef.current = false;
       }
     }
     ws.onerror = (event) => {
@@ -140,6 +182,105 @@ export function useGeminiSuggest(onFinalTranscript?: (text: string) => void) {
         setStatus("error");
         setError(
           `Gemini closed (${event.code}): ${event.reason || "no reason"}`,
+        );
+      }
+    };
+  }
+
+  async function reconnect(apiKey: string, systemText: string) {
+    if (!streamRef.current) {
+      console.warn("[gemini] reconnect: no stream available");
+      return;
+    }
+
+    console.log("[gemini] reconnecting...");
+
+    workletRef.current?.disconnect();
+    workletRef.current = null;
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+
+    const ws = new WebSocket(`${GEMINI_WS_URL}?key=${apiKey}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      const setup = {
+        setup: {
+          model: "models/gemini-3.1-flash-live-preview",
+          generationConfig: { responseModalities: ["AUDIO"] },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          contextWindowCompression: { slidingWindow: {} },
+          systemInstruction: { parts: [{ text: systemText }] },
+          ...(resumptionHandleRef.current
+            ? { sessionResumption: { handle: resumptionHandleRef.current } }
+            : {}),
+        },
+      };
+      ws.send(JSON.stringify(setup));
+      startPcmCapture(streamRef.current!, ws);
+    };
+
+    ws.onmessage = async (event) => {
+      let text: string;
+      if (event.data instanceof Blob) {
+        text = await event.data.text();
+      } else if (event.data instanceof ArrayBuffer) {
+        text = new TextDecoder().decode(event.data);
+      } else {
+        text = event.data;
+      }
+      let msg: any;
+      try {
+        msg = JSON.parse(text);
+      } catch {
+        return;
+      }
+
+      if (msg.setupComplete) {
+        console.log("[gemini] resumed");
+        setStatus("idle");
+        return;
+      }
+      if (msg.sessionResumptionUpdate?.newHandle) {
+        resumptionHandleRef.current = msg.sessionResumptionUpdate.newHandle;
+      }
+      const serverContent = msg.serverContent;
+      if (!serverContent) return;
+
+      if (serverContent.interimInputTranscription?.text) {
+        setInterim(serverContent.interimInputTranscription.text);
+      }
+      if (serverContent.inputTranscription?.text) {
+        const finalText = serverContent.inputTranscription.text.trim();
+        setInterim("");
+        if (finalText) onFinalTranscriptRef.current?.(finalText);
+      }
+      if (serverContent.outputTranscription?.text) {
+        const answerText = serverContent.outputTranscription.text;
+        if (!isWritingAnswerRef.current) {
+          isWritingAnswerRef.current = true;
+          setAnswer(answerText);
+        } else {
+          setAnswer((prev) => prev + answerText);
+        }
+      }
+      if (serverContent.turnComplete || msg.turnComplete) {
+        isWritingAnswerRef.current = false;
+      }
+    };
+
+    ws.onerror = (event) => {
+      console.error("[gemini] reconnect error:", event);
+    };
+
+    ws.onclose = (event) => {
+      console.error("[gemini] reconnect closed:", event.code, event.reason);
+      wsRef.current = null;
+      if (event.code !== 1000) {
+        setStatus("error");
+        setError(
+          `Gemini reconnect closed (${event.code}): ${event.reason || "no reason"}`,
         );
       }
     };

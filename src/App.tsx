@@ -5,6 +5,7 @@ import { StatusFooter } from "./components/StatusFooter";
 import { SuggestedAnswer } from "./components/SuggestedAnswer";
 import { useGeminiSuggest } from "./hooks/useGeminiSuggest";
 import type { ConversationLine } from "./types";
+import { ResumeUploader } from "./components/ResumeUploader";
 import "./App.css";
 
 const FALLBACK_VERSION = "0.1.0";
@@ -20,6 +21,9 @@ export default function App() {
   const [lines, setLines] = useState<ConversationLine[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [customPromptDraft, setCustomPromptDraft] = useState("");
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [resumeText, setResumeText] = useState("");
   const gemini = useGeminiSuggest((text) => {
     setLines((current) => [
       ...current,
@@ -80,16 +84,10 @@ export default function App() {
         stream.getTracks().map((t) => `${t.kind}:${t.readyState}`),
       );
 
-      // DO NOT remove the video track. On macOS 13 it kills the audio stream.
-      // stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t); });
-
-      // DO NOT call disableLoopbackAudio here. It tears down the override too early.
-      // await window.desktopApi.disableLoopbackAudio();
-
       systemStreamRef.current = stream;
       setIsCapturing(true);
       console.log("[app] starting Gemini audio session");
-      await gemini.startAudioSession(stream, apiKey);
+      await gemini.startAudioSession(stream, apiKey, customPrompt, resumeText);
       console.log("[app] startAudioSession returned");
     } catch (err) {
       console.error("[app] capture failed:", err);
@@ -108,6 +106,7 @@ export default function App() {
     systemStreamRef.current = null;
     setIsCapturing(false);
     void window.desktopApi?.disableLoopbackAudio?.();
+    setResumeText("");
   }
   async function toggleAlwaysOnTop(enabled: boolean) {
     setAlwaysOnTop(enabled);
@@ -151,6 +150,8 @@ export default function App() {
           </div>
           {speechError ? <p className="error-text">{speechError}</p> : null}
         </section>
+
+        <ResumeUploader onResumeChange={setResumeText} />
 
         <ConversationPanel
           isListening={isCapturing}
@@ -218,6 +219,27 @@ export default function App() {
                 Save key
               </button>
             </div>
+
+            <label className="toggle-row">
+              Answer style / personal details (applies before listening)
+            </label>
+            <textarea
+              className="field"
+              rows={4}
+              value={customPromptDraft}
+              onChange={(event) => setCustomPromptDraft(event.target.value)}
+              placeholder="e.g. My name is Alex, 5 years of React experience. Answer confidently and briefly, max 3 sentences."
+            />
+            <div className="btn-row">
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => setCustomPrompt(customPromptDraft)}
+              >
+                Save prompt
+              </button>
+            </div>
+
             <label className="toggle-row">
               Keep window above other apps
               <input
