@@ -5,6 +5,7 @@ const {
   session,
   systemPreferences,
   screen,
+  globalShortcut,
 } = require("electron");
 const path = require("path");
 const gemini = require("./gemini.cjs");
@@ -14,7 +15,9 @@ const APP_VERSION = "0.1.0";
 initMain({ forceCoreAudioTap: true });
 
 function applyCaptureExclusion(win, enabled) {
+  console.log("enabled", enabled);
   win.setContentProtection(Boolean(enabled));
+  win.setTitle("");
   if (typeof win.setHiddenInMissionControl === "function") {
     win.setHiddenInMissionControl(Boolean(enabled));
   }
@@ -58,6 +61,9 @@ function createWindow() {
     title: "Interview Assistant",
     backgroundColor: "#16181d",
     autoHideMenuBar: true,
+    type: "panel",
+    focusable: false,
+    alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -75,6 +81,12 @@ function createWindow() {
       );
     },
   );
+
+  win.on("page-title-updated", (e) => {
+    e.preventDefault();
+    win.setTitle("");
+  });
+
   setPinned(win, true);
 
   win.once("ready-to-show", () => {
@@ -85,6 +97,9 @@ function createWindow() {
 
   win.on("show", () => applyCaptureExclusion(win, true));
   win.on("focus", () => applyCaptureExclusion(win, true));
+  win.on("move", () => applyCaptureExclusion(win, true));
+  win.on("resize", () => applyCaptureExclusion(win, true));
+  win.on("restore", () => applyCaptureExclusion(win, true));
 
   const isPackaged = app.isPackaged;
   if (!isPackaged) {
@@ -143,6 +158,22 @@ function registerIpc() {
       : Boolean(enabled);
   });
 
+  ipcMain.handle("window:hideOverlay", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) win.hide();
+    return true;
+  });
+
+  ipcMain.handle("window:showOverlay", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      win.show();
+      win.focus();
+      applyCaptureExclusion(win, true);
+    }
+    return true;
+  });
+
   ipcMain.handle("gemini:hasKey", () => gemini.hasApiKey());
   ipcMain.handle("gemini:setKey", (_event, key) => gemini.setApiKey(key));
   ipcMain.handle("gemini:suggestAnswer", (_event, transcript) =>
@@ -165,6 +196,11 @@ function registerIpc() {
     return { granted: true, status: "prompt" };
   });
 }
+
+app.commandLine.appendSwitch(
+  "disable-features",
+  "IOSurfaceCapturer,DesktopCaptureMacV2",
+);
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler(
@@ -195,11 +231,32 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
 
+  const shortcutOk = globalShortcut.register("CommandOrControl+Shift+H", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    if (win.isVisible()) {
+      win.hide();
+    } else {
+      win.show();
+      win.focus();
+      applyCaptureExclusion(win, true);
+    }
+  });
+  if (!shortcutOk) {
+    console.error(
+      "[main] Failed to register global shortcut CommandOrControl+Shift+H",
+    );
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

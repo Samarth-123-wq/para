@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("desktopApi", {
   moveToOtherDisplay: () => ipcRenderer.invoke("window:moveToOtherDisplay"),
   geminiHasKey: () => ipcRenderer.invoke("gemini:hasKey"),
   setGeminiApiKey: (key) => ipcRenderer.invoke("gemini:setKey", key),
+  hideOverlay: () => ipcRenderer.invoke("window:hideOverlay"),
+  showOverlay: () => ipcRenderer.invoke("window:showOverlay"),
   suggestAnswer: (transcript) =>
     ipcRenderer.invoke("gemini:suggestAnswer", transcript),
 });

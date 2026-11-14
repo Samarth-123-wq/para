@@ -22,6 +22,8 @@ interface DesktopApi {
   disableLoopbackAudio: () => Promise<void>;
   getGeminiApiKey: () => Promise<string | null>;
   log: (...args: unknown[]) => void;
+  hideOverlay: () => Promise<boolean>;
+  showOverlay: () => Promise<boolean>;
 }
 
 declare global {

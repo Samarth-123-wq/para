@@ -129,6 +129,18 @@ export default function App() {
       <Header onOpenSettings={() => setSettingsOpen(true)} />
       <main className="app-main">
         <section className="card">
+          <div className="btn-row">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => void window.desktopApi?.hideOverlay?.()}
+            >
+              Hide overlay
+            </button>
+          </div>
+          <p className="meta">
+            Press ⌘⇧H (Ctrl+Shift+H on Windows) to bring it back.
+          </p>
           <h2 className="card-title">System Audio (Meeting)</h2>
           <div className="btn-row">
             <button
