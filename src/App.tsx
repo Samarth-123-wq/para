@@ -129,41 +129,27 @@ export default function App() {
       <Header onOpenSettings={() => setSettingsOpen(true)} />
       <main className="app-main">
         <section className="card">
-          <div className="btn-row">
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => void window.desktopApi?.hideOverlay?.()}
-            >
-              Hide overlay
-            </button>
-          </div>
-          <p className="meta">
-            Press ⌘⇧H (Ctrl+Shift+H on Windows) to bring it back.
-          </p>
           <h2 className="card-title">System Audio (Meeting)</h2>
-          <div className="btn-row">
+          <div className="btn-row-inline">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-compact"
               type="button"
               onClick={() => void startSystemCapture()}
               disabled={isCapturing}
             >
-              Start Listening
+              Start
             </button>
             <button
-              className="btn btn-secondary"
+              className="btn btn-secondary btn-compact"
               type="button"
               onClick={stopSystemCapture}
               disabled={!isCapturing}
             >
-              Stop Listening
+              Stop
             </button>
           </div>
           {speechError ? <p className="error-text">{speechError}</p> : null}
         </section>
-
-        <ResumeUploader onResumeChange={setResumeText} />
 
         <ConversationPanel
           isListening={isCapturing}
@@ -250,6 +236,23 @@ export default function App() {
               >
                 Save prompt
               </button>
+            </div>
+
+            <div className="settings-section">
+              <ResumeUploader onResumeChange={setResumeText} />
+            </div>
+
+            <div className="settings-section">
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => void window.desktopApi?.hideOverlay?.()}
+              >
+                Hide overlay
+              </button>
+              <p className="meta">
+                Press ⌘⇧H (Ctrl+Shift+H on Windows) to bring it back.
+              </p>
             </div>
 
             <label className="toggle-row">

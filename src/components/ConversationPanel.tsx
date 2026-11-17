@@ -46,7 +46,7 @@ export function ConversationPanel({
           ) : null}
         </div>
       )}
-      <input
+      {/* <input
         className="field"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
@@ -55,8 +55,8 @@ export function ConversationPanel({
         onKeyDown={(event) => {
           if (event.key === "Enter") addTestText();
         }}
-      />
-      <div className="btn-row">
+      /> */}
+      {/* <div className="btn-row">
         <button className="btn btn-primary" type="button" onClick={addTestText}>
           Add Test Text
         </button>
@@ -68,7 +68,7 @@ export function ConversationPanel({
         >
           Clear
         </button>
-      </div>
+      </div> */}
     </section>
   );
 }

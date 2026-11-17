@@ -49,8 +49,8 @@ function setPinned(win, enabled) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 420,
-    height: 680,
+    width: 520,
+    height: 760,
     minWidth: 360,
     minHeight: 550,
     resizable: true,
@@ -208,7 +208,8 @@ app.whenReady().then(() => {
       if (
         permission === "media" ||
         permission === "microphone" ||
-        permission === "audioCapture"
+        permission === "audioCapture" ||
+        permission === "display-capture"
       ) {
         callback(true);
         return;
@@ -222,7 +223,8 @@ app.whenReady().then(() => {
       return (
         permission === "media" ||
         permission === "microphone" ||
-        permission === "audioCapture"
+        permission === "audioCapture" ||
+        permission === "display-capture"
       );
     },
   );
