@@ -15,11 +15,19 @@ const APP_VERSION = "0.1.0";
 initMain({ forceCoreAudioTap: true });
 
 function applyCaptureExclusion(win, enabled) {
-  console.log("enabled", enabled);
+  if (!win || win.isDestroyed()) return;
+  console.log("applyCaptureExclusion", enabled);
   win.setContentProtection(Boolean(enabled));
   win.setTitle("");
   if (typeof win.setHiddenInMissionControl === "function") {
     win.setHiddenInMissionControl(Boolean(enabled));
+  }
+  if (process.platform === "win32" && enabled) {
+    setTimeout(() => {
+      if (win && !win.isDestroyed()) {
+        win.setContentProtection(true);
+      }
+    }, 50);
   }
 }
 
@@ -61,8 +69,8 @@ function createWindow() {
     title: "Interview Assistant",
     backgroundColor: "#16181d",
     autoHideMenuBar: true,
-    type: "panel",
-    focusable: false,
+    frame: true, // ✅ Gives the user the native close/minimize buttons
+    focusable: true, // ✅ Allows the user to click inputs and paste text
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -95,7 +103,9 @@ function createWindow() {
     setTimeout(() => applyCaptureExclusion(win, true), 250);
   });
 
-  win.on("show", () => applyCaptureExclusion(win, true));
+  win.on("show", () => {
+    setTimeout(() => applyCaptureExclusion(win, true), 10);
+  });
   win.on("focus", () => applyCaptureExclusion(win, true));
   win.on("move", () => applyCaptureExclusion(win, true));
   win.on("resize", () => applyCaptureExclusion(win, true));
@@ -169,7 +179,7 @@ function registerIpc() {
     if (win) {
       win.show();
       win.focus();
-      applyCaptureExclusion(win, true);
+      setTimeout(() => applyCaptureExclusion(win, true), 10);
     }
     return true;
   });
@@ -241,7 +251,7 @@ app.whenReady().then(() => {
     } else {
       win.show();
       win.focus();
-      applyCaptureExclusion(win, true);
+      setTimeout(() => applyCaptureExclusion(win, true), 10);
     }
   });
   if (!shortcutOk) {

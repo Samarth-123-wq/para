@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "build": "tsc --noEmit && vite build",
-    "start": "electron ."
+    "start": "electron .",
+    "build:renderer": "vite build",
+    "build:win": "npm run build:renderer && electron-builder --win"
   },
   "dependencies": {
     "electron-audio-loopback": "^1.0.6",
@@ -22,6 +24,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "wait-on": "^8.0.1"
