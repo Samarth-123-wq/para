@@ -14,17 +14,32 @@ const { initMain } = require("electron-audio-loopback");
 const APP_VERSION = "0.1.0";
 initMain({ forceCoreAudioTap: true });
 
+// Keep track of the last state to prevent DWM churn on Windows
+let lastProtectionState = null;
+
 function applyCaptureExclusion(win, enabled) {
   if (!win || win.isDestroyed()) return;
-  console.log("applyCaptureExclusion", enabled);
-  win.setContentProtection(Boolean(enabled));
-  win.setTitle("");
-  if (typeof win.setHiddenInMissionControl === "function") {
-    win.setHiddenInMissionControl(Boolean(enabled));
+
+  const isEnabled = Boolean(enabled);
+
+  // 1. Prevent spamming setContentProtection during UI updates
+  if (process.platform === "win32" && lastProtectionState === isEnabled) {
+    return;
   }
-  if (process.platform === "win32" && enabled) {
+  lastProtectionState = isEnabled;
+
+  win.setContentProtection(isEnabled);
+  win.setTitle("");
+
+  if (typeof win.setHiddenInMissionControl === "function") {
+    win.setHiddenInMissionControl(isEnabled);
+  }
+
+  // 2. The 50ms re-assert for Windows to prevent the black box bug
+  if (process.platform === "win32" && isEnabled) {
     setTimeout(() => {
       if (win && !win.isDestroyed()) {
+        // Bypass the deduplication check to force the re-assert
         win.setContentProtection(true);
       }
     }, 50);
@@ -104,6 +119,8 @@ function createWindow() {
   });
 
   win.on("show", () => {
+    // Reset state tracker so protection re-applies
+    lastProtectionState = null;
     setTimeout(() => applyCaptureExclusion(win, true), 10);
   });
   win.on("focus", () => applyCaptureExclusion(win, true));
@@ -162,6 +179,8 @@ function registerIpc() {
   ipcMain.handle("window:setContentProtection", (event, enabled) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return false;
+
+    lastProtectionState = null;
     applyCaptureExclusion(win, Boolean(enabled));
     return typeof win.isContentProtected === "function"
       ? win.isContentProtected()
@@ -179,7 +198,8 @@ function registerIpc() {
     if (win) {
       win.show();
       win.focus();
-      setTimeout(() => applyCaptureExclusion(win, true), 10);
+      lastProtectionState = null;
+      applyCaptureExclusion(win, true);
     }
     return true;
   });
@@ -251,7 +271,8 @@ app.whenReady().then(() => {
     } else {
       win.show();
       win.focus();
-      setTimeout(() => applyCaptureExclusion(win, true), 10);
+      lastProtectionState = null;
+      applyCaptureExclusion(win, true);
     }
   });
   if (!shortcutOk) {
